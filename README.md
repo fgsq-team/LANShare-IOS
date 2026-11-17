@@ -30,6 +30,16 @@ iOS 版与 Android / PC / Web 端**完全协议互通**：沿用同一套二进�
 - **消息分页** — 聊天记录分页加载，重启不重复拉取
 - **换网自愈** — 监听网络变化（NWPathMonitor），切换 WiFi/网段变动后自动重绑监听 socket 并重新发现设备，无需重启 App
 
+## 效果图
+
+| 传输记录 | 文件浏览 | 相册分类 | 图片选择 |
+|:---:|:---:|:---:|:---:|
+| ![传输记录](img/chat.jpg) | ![文件浏览](img/files.jpg) | ![相册分类](img/media.jpg) | ![图片选择](img/grid.jpg) |
+
+| 图片预览 | 音频选择 | 应用设置 | 远程绘图 |
+|:---:|:---:|:---:|:---:|
+| ![图片预览](img/preview.jpg) | ![音频选择](img/audio.jpg) | ![应用设置](img/settings.jpg) | ![远程绘图](img/draw.jpg) |
+
 ## 与安卓版的差异
 
 受 iOS 平台限制，以下安卓功能**未移植**：
@@ -69,6 +79,7 @@ iOS 版与 Android / PC / Web 端**完全协议互通**：沿用同一套二进�
 ```
 LANShare-IOS/
 ├── LANShare.xcodeproj
+├── img/                           # README 效果图
 ├── LANShare/
 │   ├── LANShareApp.swift          # App 入口
 │   ├── Assets.xcassets            # 图标（沿用安卓图标）
@@ -143,8 +154,6 @@ xcodebuild -exportArchive -archivePath /tmp/LANShare.xcarchive \
 - [GitHub Issues](https://github.com/fgsq-team/LANShare-IOS/issues)
 
 ## License
-
-沿用 Android 版的 Apache License 2.0：
 
 ```
 Copyright 2021 fgsqme
