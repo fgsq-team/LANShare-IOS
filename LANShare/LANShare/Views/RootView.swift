@@ -137,7 +137,9 @@ struct RootView: View {
         }
         .onChange(of: scenePhase) { _, phase in
             switch phase {
-            case .active: service.start()
+            case .active:
+                service.start()
+                service.checkNetworkChange()
             case .background: break
             default: break
             }

@@ -1,5 +1,6 @@
 import Foundation
 import Combine
+import Network
 import UIKit
 
 /// 网页服务桥接（由 Web/HttpServer 在启动时注册）
@@ -91,6 +92,12 @@ final class LANService: ObservableObject {
     private var messageTotalPages = 1
     private var lastMessageTime: Int64 = 0
 
+    // MARK: - 网络变化监听
+    /// 换网后 BSD 监听 socket 会失效，而 start() 被 isRunning 守卫跳过，只能靠重绑自愈
+    private var pathMonitor: NWPathMonitor?
+    private let netQueue = DispatchQueue(label: "fgsqw.lanshare.network")
+    private var netSignature = ""
+
     var messageKey: String { LSettings.shared.messageKey }
     var devName: String { LSettings.shared.devName }
 
@@ -104,6 +111,14 @@ final class LANService: ObservableObject {
         isRunning = true
         ResumeStore.cleanupExpired()
         initData()
+        netSignature = Self.networkSignature()
+        let monitor = NWPathMonitor()
+        monitor.pathUpdateHandler = { [weak self] _ in
+            // 与 Android NetWorkReceiver 一致：等 1s 让新网卡地址就绪再比对
+            self?.netQueue.asyncAfter(deadline: .now() + 1) { self?.checkNetworkChange() }
+        }
+        monitor.start(queue: netQueue)
+        pathMonitor = monitor
         udpServer.start()
         tcpServer.start()
         // 网页路由始终注册，是否放行由 TcpServer 的 webService 开关决定，运行期改开关无需重启
@@ -123,6 +138,8 @@ final class LANService: ObservableObject {
     func stop() {
         guard isRunning else { return }
         isRunning = false
+        pathMonitor?.cancel()
+        pathMonitor = nil
         deviceManager.setRunning(false)
         tcpServer.stop()
         udpServer.stop()
@@ -134,6 +151,37 @@ final class LANService: ObservableObject {
     func initData() {
         deviceManager.refreshLocalDevices()
         devices = deviceManager.allDeviceList()
+    }
+
+    // MARK: - 网络变化自愈
+
+    /// 本机 IPv4 网段签名；换网（IP/掩码变化）时签名改变
+    private static func networkSignature() -> String {
+        NetUtils.netInfoList().map { "\($0.ip)/\($0.mask)" }.sorted().joined(separator: ",")
+    }
+
+    /// 比对网段签名，变化则重绑监听 socket。由 NWPathMonitor、扫描循环、回到前台共同触发，
+    /// 签名去重保证只重绑一次；串行队列避免并发重绑。
+    func checkNetworkChange() {
+        let sig = Self.networkSignature()
+        netQueue.async { [weak self] in
+            guard let self else { return }
+            guard sig != self.netSignature else { return }
+            self.netSignature = sig
+            guard !sig.isEmpty, self.isRunning else { return }
+            self.rebindServers()
+        }
+    }
+
+    /// 等价于用户手动重启 App 的网络部分：重绑 UDP/TCP 监听、刷新身份、剔除跨网段设备、重新广播上线
+    private func rebindServers() {
+        LLog.debug("network changed, rebinding udp/tcp listeners")
+        deviceManager.refreshLocalDevices()
+        deviceManager.evictOffSubnet()
+        udpServer.start()
+        tcpServer.stop()
+        tcpServer.start()
+        deviceManager.notifyAllDevicesOnline()
     }
 
     // MARK: - 消息

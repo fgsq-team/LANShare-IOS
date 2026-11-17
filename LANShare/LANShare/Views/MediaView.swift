@@ -13,7 +13,6 @@ struct MediaBrowseView: View {
 
     var body: some View {
         content
-            .navigationTitle("媒体")
             .navigationDestination(for: MediaAlbum.self) { album in
                 MediaAssetGrid(album: album)
             }

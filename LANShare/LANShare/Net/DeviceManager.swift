@@ -229,6 +229,7 @@ final class DeviceManager {
             guard let self else { return }
             while self.isRunning {
                 self.refreshLocalDevices()
+                self.service?.checkNetworkChange()
                 for local in self.selfDevices {
                     if !local.devBrotIP.isEmpty {
                         self.broadcast(announce: local, cmd: LCmd.udpGetDevices)
@@ -265,6 +266,18 @@ final class DeviceManager {
         }
         gate.unlock()
         for key in expired { removeDevice(key) }
+    }
+
+    /// 换网后剔除已不在任何本机网段的在线设备（保留扫码固定与 IPv6 设备），避免列表残留旧局域网设备
+    func evictOffSubnet() {
+        let locals = selfDevices
+        gate.lock()
+        let stale = onLineDevices.filter { _, device in
+            guard device.canRemove, device.isIPv4 else { return false }
+            return !locals.contains { NetUtils.subNet(device.devIP, $0.devIP, $0.devNetMask) }
+        }.map { $0.key }
+        gate.unlock()
+        for key in stale { removeDevice(key) }
     }
 
     /// 对应 noticeDeviceStateByIp：单播回复或广播上下线

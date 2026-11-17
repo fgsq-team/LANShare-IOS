@@ -4,6 +4,9 @@ import Foundation
 final class LUdpServer {
     private var channel: LUdpChannel?
     private var running = false
+    /// 每次重绑递增；接收线程据此区分“自己出错需自愈”与“已被外部重绑取代”
+    private var generation = 0
+    private let gate = NSLock()
     private let deviceManager: DeviceManager
     weak var service: LANService?
 
@@ -12,9 +15,15 @@ final class LUdpServer {
         self.service = service
     }
 
-    /// 绑定 UDP 端口并启动接收循环；端口变更后可重新调用
+    /// 绑定 UDP 端口并启动接收循环；端口变更/换网后可重新调用
     func start() {
-        stop()
+        gate.lock()
+        defer { gate.unlock() }
+        running = false
+        channel?.close()
+        channel = nil
+        generation += 1
+        let gen = generation
         let port = LSettings.shared.udpPort
         running = true
         do {
@@ -35,7 +44,13 @@ final class LUdpServer {
                 } catch LSError.timeout {
                     continue
                 } catch {
-                    if self.running { LLog.debug("udp recv stopped: \(error)") }
+                    // 换网/接口抖动会让 recvfrom 报错一次；若直接退出线程就再也收不到包，
+                    // 只能重启 App。这里在仍是当前代且运行中时重绑自愈。
+                    guard self.running, gen == self.generation else { return }
+                    LLog.debug("udp recv error, rebinding: \(error)")
+                    LThread.sleep(seconds: 0.5)
+                    guard self.running, gen == self.generation else { return }
+                    self.start()
                     return
                 }
             }
@@ -43,6 +58,8 @@ final class LUdpServer {
     }
 
     func stop() {
+        gate.lock()
+        defer { gate.unlock() }
         running = false
         channel?.close()
         channel = nil
